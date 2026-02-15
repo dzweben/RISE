@@ -1,4 +1,4 @@
-# Cablab-Rise (RISE)
+# RISE
 
 ## Overview
 This repository contains the RISE analysis pipeline for social media behavior (MTES/SSM), reward measures, and downstream regression analyses. The workflow is organized into three main phases: SSM cleaning, data integration, and final analyses, plus a neural data check module.
