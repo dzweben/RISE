@@ -1,0 +1,18 @@
+.DS_Store
+.Rhistory
+.RData
+.Rproj.user/
+
+# R artifacts
+*.html
+*.knit.md
+
+# Data and binary assets
+*.csv
+*.sav
+*.xlsx
+*.pptx
+*.doc
+*.docx
+*.rtf
+*.png

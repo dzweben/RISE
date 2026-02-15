@@ -1,0 +1,1241 @@
+---
+title: "RISE_SSM"
+output: html_document
+date: "2024-02-08"
+---
+# --- Read MTES csv file into R ---
+```{r}
+
+#df is a fancy convention for data frame. Data frame is the same thing as spreadsheet
+df <- read.csv("/Users/dannyzweben/Desktop/CABLAB_Files/RISE/SSM/Rise_SSM.csv")
+
+```
+
+# --- Filter only relevent MTES data --
+```{r}
+# Step 1: Filter rows where 'mtes' column is 1 or 2
+df_filtered <- df[df$mtes %in% c(1, 2), ]
+
+# Step 2: Find the index of 'ownphone' column
+ownphone_index <- which(colnames(df) == "OwnPhone")
+
+# Step 3: Create a new data frame with 'rise_id' and columns from 'ownphone' onwards
+# Ensure to select 'rise_id' from the original df
+df_mtes <- data.frame(
+  rise_id = df_filtered$rise_id,  # Use rise_id from filtered rows
+  df_filtered[, ownphone_index:ncol(df)]
+)
+
+```
+
+
+
+
+# --- Load relevant libraries for R code ---
+```{r}
+
+library(corrplot)
+library(dplyr)
+library(apaTables)
+library(psych)
+library(ggplot2)
+
+```
+
+
+### - it's statistically correct that the lowest response option should start at 0, rather than 1.
+
+For example, if the early response options are "Never" and "Not often" -- REDcap scores them as 1 and 2.
+
+We are subtracting 1 so that "Never" and "Not often" equal 0 and 1.
+
+```{r}
+
+#From the MTES_PhoneChecking_DailyCheck column to the MTES_PhoneChecking_MidConvo column, subtract 1 from all columns
+df_mtes <- df_mtes %>% mutate(across(MTES_PublicUpdates_NewPosts:MTES_Time_Streaming_phone,~.-1))
+
+#From the MTES_SocialMediaUse_Instagram_TimeOnApp column to the MTES_SocialMediaUse_CheckingApp_instagram, subtract 1 from all columns
+df_mtes <- df_mtes %>% mutate(across(MTES_SocialMediaUse_TimeOnApp_instagram:MTES_SocialMediaUse_CheckingApp_whatsapp,~.-1))
+
+```
+
+# ----- CREATE SEPERATE DATA FRAMES FOR MTES AND OBJ SCORES -----
+```{r cleaning up Subjective}
+
+
+#Let's subset the columns with the "MTES_" prefix before we move forward with generating the MTES_Total score
+mtes <- df_mtes %>% 
+  select(rise_id, starts_with("MTES_"))
+
+obj <- df_mtes %>% 
+  select(rise_id, starts_with("OBJ_"))
+
+
+#Gather complete cases for all rows besides the TimeOnApp and CheckingApp columns since those will be different per person
+#mtes.unique <- mtes.unique %>% filter(complete.cases(.[,-10:-42]))
+
+
+```
+
+
+##### ______ ORIGINAL MTES SCORE INSTRUCTIONS _______ ########
+
+The MTES score is an average of 3 dimensions of the MTES questionnaire:
+
+1)	Sum of all time spent on all social media apps that were endorsed
+
+2)  Mean of the phone checking behaviors from the question items listed above
+-"Overall, how much do you check your smartphone?"
+-"How often do you find yourself checking your phone when you have a few moments to spare (waiting in line, for an elevator, at a stoplight, etc.)?"
+-"How often do you find yourself checking your phone during conversations or when hanging around with friends?"
+
+3)	Mean of the 2 posting/re-posting questions
+-"How often do you post something new about yourself on a social media platform (Tweet, Instagram post, Facebook status update, etc.)"
+-"How often do you share or repost something you encountered on a social media platform (e.g., repost, reTweet, reGram, Facebook share, etc.)"
+
+
+*Step 1*: Calculate the aggregate measure for time on social media apps, phone checking behaviors, and posting/reposting behaviors
+1)	Take the sum of time spent on social media apps that were endorsed
+2)	Take the mean of the phone checking behaviors from the question items listed above
+3)	Take the mean of the 2 posting/re-posting questions
+
+
+*Step 2*: Calculate the z-score for each aggregate measure
+1) Apply the scale() function on each aggregate measure to get the z-score
+
+
+*Step 3*: Take the average of the 3 aggregate measures to get the final MTES score
+1)	MTES_TimeOnApps_sum.z + MTES_PhoneChecking_mean.z + MTES_PublicUpdates_mean.z/ 3
+
+
+# ----- Calculating MTES aggregate variables for TimeOnApp, PhoneChecking, and PublicUpdates before z-scoring -----#######
+
+
+```{r Calculating MTES composite variables}
+
+
+#Make a copy of the mtes_merged.unique data frame in order to collect the aggregate scores
+mtes_agg <- mtes
+
+########################################################################################################################################################
+
+
+# Calculate rowMeans for PhoneChecking
+mtes_agg$MTES_PhoneChecking.mean <- rowMeans(
+  mtes_agg[, c("MTES_PhoneChecking_Gen", "MTES_PhoneChecking_Leisure", "MTES_PhoneChecking_MidConvo")], 
+  na.rm = TRUE
+)
+
+# Replace NaN with 0 (so that non phone users have a score of 0)
+mtes_agg$MTES_PhoneChecking.mean <- ifelse(is.nan(mtes_agg$MTES_PhoneChecking.mean), 0, mtes_agg$MTES_PhoneChecking.mean)
+
+
+
+#Calculate rowSums for Social Media Use -- TimeOnApp 
+mtes_agg$MTES_SocialMediaUse_TimeOnApp.sum <-
+  rowSums(mtes_agg[,grep("TimeOnApp*",
+                            names(mtes_agg))], na.rm=TRUE)
+
+# Calculate rowMeans for Public Updates
+mtes_agg$MTES_PublicUpdates.mean <- rowMeans(
+  mtes_agg[, grep("MTES_PublicUpdates*", names(mtes_agg))], 
+  na.rm = TRUE
+)
+
+# Replace NaN with 0
+mtes_agg$MTES_PublicUpdates.mean[is.nan(mtes_agg$MTES_PublicUpdates.mean)] <- 0
+
+```
+
+
+# --- Subset a data frame with only the aggregate MTES variables ---
+```{r}
+
+#new data frame <- subset(original data frame, select=c(name of columns))
+mtes_agg.clean <- subset(mtes_agg, select=c(rise_id, MTES_SocialMediaUse_TimeOnApp.sum, MTES_PhoneChecking.mean, MTES_PublicUpdates.mean))
+
+
+
+```
+
+###### REMOVE OUTLIERS FROM EACH OF THE MTES SCORES
+#### The following section of code has been removed from the script because none of the fully calculated MTES scores (checking + timeonapp + posting) had any outliers, even when the outliers from the seperate subscores were included. #####
+
+
+
+
+######### CALCULATE Z SCORES, AND COMPOSITE SCORE FOR MTES
+
+# --- Make a copy of the data frame before z-scoring the 3 MTES aggregate variables ---
+```{r}
+
+mtes_z.scores <- mtes_agg.clean
+
+```
+
+
+
+# --- Z-Score the 3 MTES Aggregate variables: TimeOnApp.sum, PhoneChecking.mean, and PublicUpdates.mean ----
+```{r}
+
+
+####### ******* USE SCALE() FUNCTION TO CALCULATE Z-SCORES FOR MTES AGGREGATE MEASURES ********
+
+
+#TimeOnApp
+mtes_z.scores$MTES_SocialMediaUse_TimeOnApp.sum.z <-
+  as.vector(scale(mtes_z.scores$MTES_SocialMediaUse_TimeOnApp.sum)) # using sum
+
+#PhoneChecking
+mtes_z.scores$MTES_PhoneChecking.mean.z <-
+  as.vector(scale(mtes_z.scores$MTES_PhoneChecking.mean)) # using mean
+
+#PublicUpdates
+mtes_z.scores$MTES_PublicUpdates.mean.z <-
+  as.vector(scale(mtes_z.scores$MTES_PublicUpdates.mean)) # using mean
+
+
+```
+### calculate summary MTES score from Z scores
+```{r}
+# ORIGINAL MTES measure -- DOES NOT INCLUDE SAS MEASURE
+mtes_z.scores <- mtes_z.scores %>% 
+  group_by(rise_id) %>%
+  mutate(MTES_Total_Original.z = 
+           (MTES_SocialMediaUse_TimeOnApp.sum.z+
+              MTES_PhoneChecking.mean.z+
+              MTES_PublicUpdates.mean.z)/3) %>% 
+  ungroup()
+
+```
+
+
+
+# Subset the composite MTES score
+```{r}
+
+mtes_compositescore <- subset(mtes_z.scores, select=c(rise_id,MTES_Total_Original.z ))
+
+
+# Subset to create mtes_compositescore
+mtes_compositescore <- subset(mtes_z.scores, select=c(rise_id, MTES_Total_Original.z))
+
+```
+
+##### CLEAN THE DATA  (Remove outliers!) #####
+
+```{r}
+
+# Remove NA values before calculating the mean and SD for MTES_Total_Original.z
+mtes_total_clean <- na.omit(mtes_compositescore$MTES_Total_Original.z)
+
+# Calculate mean and standard deviation
+mean_mtes_total <- mean(mtes_total_clean)
+sd_mtes_total <- sd(mtes_total_clean)
+
+# Define upper and lower thresholds for outliers
+threshold_mtes_total <- c(mean_mtes_total - 2.5 * sd_mtes_total, mean_mtes_total + 2.5 * sd_mtes_total)
+
+# Output the thresholds for verification
+cat("Lower threshold for MTES_Total_Original.z:", threshold_mtes_total[1], "\n")
+cat("Upper threshold for MTES_Total_Original.z:", threshold_mtes_total[2], "\n")
+
+# Identify outliers in MTES_Total_Original.z
+outliers_mtes <- which(mtes_compositescore$MTES_Total_Original.z < threshold_mtes_total[1] | 
+                       mtes_compositescore$MTES_Total_Original.z > threshold_mtes_total[2])
+
+# Get rise_id associated with the outliers
+outlier_rise_ids_mtes <- mtes_compositescore[outliers_mtes, "rise_id"]
+
+# Count the number of outliers
+removed_cells_mtes <- length(outliers_mtes)
+
+# Output the count of removed cells
+cat("Removed cells for MTES_Total_Original.z:", removed_cells_mtes, "\n")
+
+# Print out the rise_id of the removed outliers
+cat("Rise IDs associated with outliers in MTES_Total_Original.z:", 
+    paste(outlier_rise_ids_mtes, collapse = ", "), "\n")
+
+# Replace outliers in MTES_Total_Original.z with NA
+mtes_compositescore$MTES_Total_Original.z[outliers_mtes] <- NA
+
+# 1 Removed: 50076
+
+
+
+
+
+```
+
+#### CALCULATE SAS SCORES!!! ###########################################################
+```{r}
+
+#Calculate rowMeans for SAS 
+mtes_agg$SAS_Mean <- 
+  rowMeans(mtes_agg[,c("MTES_SAS_MissedPlans", "MTES_SAS_Concentrating", "MTES_SAS_Pain", "MTES_SAS_Separation", "MTES_SAS_Impatient", "MTES_SAS_Thoughts", "MTES_SAS_Addiction", "MTES_SAS_FOMO", "MTES_SAS_Time", "MTES_SAS_Social" )], na.rm=TRUE)
+
+
+
+```
+
+
+####Remove outliers from SAS data
+
+```{r}
+
+# Remove NA values before calculating the mean and SD
+sas_mean_clean <- na.omit(mtes_agg$SAS_Mean)
+
+# Calculate mean and standard deviation
+mean_sas_mean <- mean(sas_mean_clean)
+sd_sas_mean <- sd(sas_mean_clean)
+
+# Define upper and lower thresholds
+threshold_sas_mean <- c(mean_sas_mean - 2.5 * sd_sas_mean, mean_sas_mean + 2.5 * sd_sas_mean)
+
+# Output the thresholds for verification
+cat("Lower threshold:", threshold_sas_mean[1], "\n")
+cat("Upper threshold:", threshold_sas_mean[2], "\n")
+
+# Identify outliers
+outliers <- which(mtes_agg$SAS_Mean < threshold_sas_mean[1] | mtes_agg$SAS_Mean > threshold_sas_mean[2])
+
+# Get rise_id associated with outliers
+outlier_rise_ids <- mtes_agg[outliers, "rise_id"]
+
+# Count the number of outliers
+removed_cells <- length(outliers)
+
+# Output the count of removed cells
+cat("Removed cells for SAS_Mean:", removed_cells, "\n")
+
+# Print out the rise_id of the removed outliers
+cat("Rise IDs associated with outliers:", paste(outlier_rise_ids, collapse = ", "), "\n")
+
+# Replace outliers in SAS_Mean with NA
+mtes_agg$SAS_Mean[outliers] <- NA
+
+
+### 3 outliers removed: 50158, 50193, 50216 
+
+```
+
+### subset a datafram with only rise id, and summary cleaned SAS score
+```{r}
+#new data frame <- subset(original data frame, select=c(name of columns))
+sas_agg.clean <- subset(mtes_agg, select=c(rise_id, SAS_Mean))
+
+
+##### Z SCORE THE DATA FRAME #######
+
+# Z score the variable OBJ_Usage.DailyHourlyAverage
+sas_agg.clean$SAS_Mean.Z <- scale(sas_agg.clean$SAS_Mean)
+
+# Create a new data frame with rise_id and OBJ_Usage.DailyHourlyAverage.Z
+sas_agg.clean.Z <- data.frame(rise_id = sas_agg.clean$rise_id,
+                                sas_agg.clean.Z = sas_agg.clean$SAS_Mean.Z)
+
+
+added_mtes_total <- merge(sas_agg.clean.Z, mtes_compositescore, by = "rise_id", all = TRUE)
+
+
+```
+
+
+
+###calculate daily usage from last week score
+```{r}
+
+obj$OBJ_Usage.DailyHourlyAverage <- (obj$OBJ_Usage_Minutes/60) + (obj$OBJ_Usage_Hours)
+
+```
+
+### subset a datafram with only rise id, and OBJ_Usage.DailyHourlyAverage score
+
+```{r}
+
+daily_use.clean <- subset(obj, select=c(rise_id, OBJ_Usage.DailyHourlyAverage))
+
+```
+
+#### Remove outliers from OBJ daily use 
+```{r}
+
+mean_obj <- mean(daily_use.clean$OBJ_Usage.DailyHourlyAverage, na.rm = TRUE)
+sd_obj <- sd(daily_use.clean$OBJ_Usage.DailyHourlyAverage, na.rm = TRUE)
+
+# Define upper and lower thresholds
+threshold_obj <- c(mean_obj - 2.5 * sd_obj, mean_obj + 2.5 * sd_obj)
+
+# Identify outliers
+outliers <- which(daily_use.clean$OBJ_Usage.DailyHourlyAverage < threshold_obj[1] | daily_use.clean$OBJ_Usage.DailyHourlyAverage > threshold_obj[2])
+
+# Replace outliers with NA
+daily_use.clean$OBJ_Usage.DailyHourlyAverage[outliers] <- NA
+
+
+# Count replaced cells for OBJ_Usage.DailyHourlyAverage
+replaced_obj <- length(outliers)
+removed_rows <- which(daily_use.clean$OBJ_Usage.DailyHourlyAverage %in% daily_use.clean$OBJ_Usage.DailyHourlyAverage[outliers])
+
+
+# Output the count of replaced cells for OBJ_Usage.DailyHourlyAverage
+cat("Replaced outliers for OBJ_Usage.DailyHourlyAverage:", replaced_obj, "\n")
+
+# Print indices of removed rows
+cat("rise_id values for removed rows due to outliers:\n", daily_use.clean$rise_id[outliers], "\n")
+
+
+
+### 1 OBJ outliers removed: Rise_ID 50219
+ 
+```
+
+#### Z score OBJ data #####
+
+```{r}
+# Z score the variable OBJ_Usage.DailyHourlyAverage
+daily_use.clean$OBJ_Usage.DailyHourlyAverage.Z <- scale(daily_use.clean$OBJ_Usage.DailyHourlyAverage)
+
+# Create a new data frame with rise_id and OBJ_Usage.DailyHourlyAverage.Z
+daily_use.clean.Z <- data.frame(rise_id = daily_use.clean$rise_id,
+                                OBJ_Usage.DailyHourlyAverage.Z = daily_use.clean$OBJ_Usage.DailyHourlyAverage.Z)
+
+
+
+```
+
+
+
+#### merge the data frame obj and mtes_agg , they share a variable rise_id, call it added_mtes_total ##
+
+```{r}
+
+#daily_use.clean
+#sas_agg.clean
+#mtes_compositescore
+
+#they share column rise_id
+# Merge daily_use.clean.Z and added_mtes_total by "rise_id"
+added_mtes_total <- merge(daily_use.clean.Z, added_mtes_total, by = "rise_id")
+
+                          
+
+
+```
+
+
+
+
+
+#### OBTAIN DESCRIPTIVE STATISTICS FOR ALL OF THE DATA ####### 
+
+
+############################ getting descriptive statistics for each variable ##########
+
+
+############ MTES #########
+
+Calculate Chronbacs Alpha
+
+
+```{r}
+# Step 1: Subset the dataframe with checking variables, posting variables, but using the total time on app score.
+mtes_realiability <- mtes_agg[, c("MTES_PhoneChecking_Gen", "MTES_PhoneChecking_Leisure", 
+                                   "MTES_PhoneChecking_MidConvo", "MTES_PublicUpdates_NewPosts", 
+                                   "MTES_PublicUpdates_Reposts", "MTES_SocialMediaUse_TimeOnApp.sum")]
+
+# Step 2: Z-score transformation
+mtes_realiability_z <- scale(mtes_realiability)
+
+# Rename columns with _z suffix
+colnames(mtes_realiability_z) <- paste0(colnames(mtes_realiability), "_z")
+
+# Step 3: Calculate Cronbach's alpha
+
+MTES_cronbach_alpha <- psych::alpha(mtes_realiability_z)
+
+# Extract total Cronbach's alpha
+MTES_total_alpha <- MTES_cronbach_alpha$total$raw_alpha
+
+# Print total Cronbach's alpha
+print(MTES_total_alpha)
+
+# α = 0.73
+```
+
+### MTES summary score, total descriptive statistics
+```{r} 
+
+# Load required packages
+
+
+# Extract the variable of interest
+MTES_Total_Original_Z <- mtes_compositescore$MTES_Total_Original.z
+
+# Compute descriptive statistics
+descriptive_stats_MTES <- describe(mtes_compositescore$MTES_Total_Original.z)
+
+
+```
+
+
+############ SAS #########
+
+
+
+### calculate chronobacs alpha
+```{r}
+# Step 1: Subset the dataframe with SAS variables
+
+sas_reliability <- mtes_agg[,c("MTES_SAS_MissedPlans", "MTES_SAS_Concentrating", "MTES_SAS_Pain", "MTES_SAS_Separation", "MTES_SAS_Impatient", "MTES_SAS_Thoughts", "MTES_SAS_Addiction", "MTES_SAS_FOMO", "MTES_SAS_Time", "MTES_SAS_Social" )]
+
+# Step 2: Calculate Cronbach's alpha
+SAS_cronbach_alpha <- psych::alpha(sas_reliability)
+
+# Extract total Cronbach's alpha
+SAS_total_alpha <- SAS_cronbach_alpha$total$raw_alpha
+
+# Print total Cronbach's alpha
+print(SAS_total_alpha)
+
+## α =0.86 
+
+```
+
+### calculate descriptive statistics 
+```{r}
+
+# Compute descriptive statistics
+descriptive_stats_SAS <- describe(sas_agg.clean$SAS_Mean)
+
+```
+
+######### Objective Daily USE ######
+
+
+```{r}
+
+# Compute descriptive statistics
+descriptive_stats_OBJ_daily_use <- describe(daily_use.clean$OBJ_Usage.DailyHourlyAverage)
+ print(descriptive_stats_OBJ_daily_use)
+
+```
+
+
+
+#### Calculating a total SSM engagement score: ####
+
+```{r}
+
+# Calculate SSM_composite variable
+
+# Filter rows with complete cases in specified columns
+complete_rows <- complete.cases(added_mtes_total[, c('OBJ_Usage.DailyHourlyAverage.Z', 'sas_agg.clean.Z', 'MTES_Total_Original.z')])
+
+# Calculate SSM_composite variable for complete rows
+added_mtes_total$SSM_composite <- NA  # Initialize the column
+added_mtes_total$SSM_composite[complete_rows] <- rowMeans(
+  added_mtes_total[complete_rows, c('OBJ_Usage.DailyHourlyAverage.Z', 'sas_agg.clean.Z', 'MTES_Total_Original.z')],
+  na.rm = TRUE
+)
+
+
+```
+
+```{r}
+
+# Subset data frame to include only 'rise_id' and 'SSM_composite'
+SSM_composite.df <- added_mtes_total[c('rise_id', 'SSM_composite')]
+
+added_mtes_total <- merge(SSM_composite.df, added_mtes_total, by = "rise_id")
+
+
+```
+
+### 2. Get statistics for the the SSM 
+
+```{r}
+
+# Calculate descriptive statistics for 'SSM_composite'
+descriptive_stats_SSM_composite <- describe(SSM_composite.df$SSM_composite)
+
+## Calculate Reliability for 'SSM_composite' 
+ssm_data <- added_mtes_total[, c("OBJ_Usage.DailyHourlyAverage.Z", "sas_agg.clean.Z", "MTES_Total_Original.z")]
+
+# Step 2: Calculate Cronbach's alpha
+ssm_cronbach_alpha <- psych::alpha(ssm_data)
+
+# Extract total Cronbach's alpha
+ssm_total_alpha <- ssm_cronbach_alpha$total$raw_alpha
+
+# Print total Cronbach's alpha
+print(ssm_total_alpha)
+
+### no outliers (mean/max both below |2.5|)
+```
+
+### 3. Create a new digital awareness variable
+```{r}
+
+# Round 'OBJ_Usage.DailyHourlyAverage' to the nearest whole number
+obj$OBJ_usage_rounded <- round(obj$OBJ_Usage.DailyHourlyAverage)
+
+# Create new data frame 'daily_use.rounded'
+daily_use.rounded <- data.frame(rise_id = obj$rise_id, OBJ_usage_rounded = obj$OBJ_usage_rounded)
+
+# Z-score the variable 'OBJ_usage_rounded'
+daily_use.rounded$OBJ_use.rounded.z <- scale(daily_use.rounded$OBJ_usage_rounded)
+
+# Create new data frame 'obj_daily_use.clean.z'
+obj_daily_use.clean.z <- data.frame(rise_id = daily_use.rounded$rise_id, OBJ_use.rounded.z = daily_use.rounded$OBJ_use.rounded.z)
+
+# Subset data frame to include only 'rise_id' and 'MTES_TimeSpent_Daily_Hours'
+subjective_daily_use <- mtes[c('rise_id', 'MTES_TimeSpent_Daily_Hours')]
+
+# Z-score the variable 'MTES_TimeSpent_Daily_Hours'
+subjective_daily_use$MTES_TimeSpent_Daily_Hours.z <- scale(subjective_daily_use$MTES_TimeSpent_Daily_Hours)
+
+# Create new data frame 'subjective_daily_use.z'
+subjective_daily_use.z <- data.frame(rise_id = subjective_daily_use$rise_id, MTES_TimeSpent_Daily_Hours.z = subjective_daily_use$MTES_TimeSpent_Daily_Hours.z)
+
+# Merge data frames using 'rise_id'
+digital_awareness.df <- merge(subjective_daily_use.z, obj_daily_use.clean.z, by = "rise_id")
+
+# Create 'digital_awareness_score' variable
+digital_awareness.df$digital_awareness_score <- digital_awareness.df$MTES_TimeSpent_Daily_Hours.z - digital_awareness.df$OBJ_use.rounded.z
+
+# Subset data frame to include only 'rise_id' and 'digital_awareness_score'
+digital_awareness.composite <- digital_awareness.df[c('rise_id', 'digital_awareness_score')]
+
+```
+
+### Add new variable to digital_awareness.composite called 'digital absolute' which takes the absolute value of the digital awareness scores ### 
+```{r}
+# Convert to numeric if necessary
+
+
+# Apply the abs function
+digital_awareness.composite$digital_awareness_absolute <- abs(digital_awareness.composite$digital_awareness_score)
+
+
+```
+
+
+### 4. Remove Outliers from the digital awareness variable 
+
+```{r}
+
+# Calculate the mean and standard deviation for the digital_awareness_score variable
+mean_digital_awareness <- mean(digital_awareness.composite$digital_awareness_score, na.rm = TRUE)
+sd_digital_awareness <- sd(digital_awareness.composite$digital_awareness_score, na.rm = TRUE)
+
+# Define upper and lower thresholds
+threshold_digital_awareness <- c(mean_digital_awareness - 2.5 * sd_digital_awareness, mean_digital_awareness + 2.5 * sd_digital_awareness)
+
+# Identify outliers
+outliers_da <- which(digital_awareness.composite$digital_awareness_score < threshold_digital_awareness[1] | digital_awareness.composite$digital_awareness_score > threshold_digital_awareness[2])
+
+
+# Replace cells outside the thresholds with NA
+digital_awareness.composite$digital_awareness_score[outliers_da] <- NA
+
+# Count replaced cells for digital_awareness_score variable
+replaced_digital_awareness <- length(outliers_da)
+
+# Output the count of replaced cells for digital_awareness_score variable
+
+cat("Replaced outliers for  digital_awareness_score", replaced_digital_awareness, "\n")
+
+
+# Output the Rise_ids of replaced cells for digital_awareness_score variable
+cat("rise_id values for removed rows due to outliers:\n",digital_awareness.composite$rise_id[outliers_da], "\n")
+
+### 4 Outliers Removed
+### Removed RISE IDS:  50024 50151 50219 50244 
+
+
+```
+
+
+### 5. Remove Outliers from the ABSOLUTE digital awareness variable 
+
+```{r}
+# Calculate the mean and standard deviation for the digital_awareness_score variable
+mean_digital_awareness_absolute <- mean(digital_awareness.composite$digital_awareness_absolute, na.rm = TRUE)
+sd_digital_awareness_absolute <- sd(digital_awareness.composite$digital_awareness_absolute, na.rm = TRUE)
+
+# Define upper and lower thresholds
+threshold_digital_awareness_absolute <- c(mean_digital_awareness_absolute - 2.5 * sd_digital_awareness_absolute, mean_digital_awareness_absolute + 2.5 * sd_digital_awareness_absolute)
+
+# Identify outliers
+outliers_da_A <- which(digital_awareness.composite$digital_awareness_absolute < threshold_digital_awareness_absolute[1] | digital_awareness.composite$digital_awareness_absolute > threshold_digital_awareness_absolute[2])
+
+
+
+# Replace cells outside the thresholds with NA
+digital_awareness.composite$digital_awareness_absolute[outliers_da_A] <- NA
+
+# Output the count of replaced cells for digital_awareness_absolute variable
+replaced_digital_awareness_absolute <- length(outliers_da_A)
+
+# Output the Rise_ids of replaced cells for digital_awareness_absolute variable
+cat("Replaced outliers for  digital_awareness_score", replaced_digital_awareness, "\n")
+
+
+
+cat("rise_id values for removed rows due to outliers:\n",digital_awareness.composite$rise_id[outliers_da_A], "\n")
+
+
+### 4 Outliers Removed
+### Removed RISE IDS:  50024 50151 50219 50244 
+
+
+added_mtes_total <- merge(digital_awareness.composite, added_mtes_total, by = "rise_id")
+
+
+
+```
+
+
+######## calculating correlations between digital awareness, digital awareness absolute, subjective, and obj rounded, digital estimate ############
+
+1. subset data frame, remove outliers from obj rounded and subjective daily use
+```{r}
+# Creating awareness_use.df
+# Create individual data frames for each variable with only `rise_id` and the required variable
+df_OBJ_usage <- obj %>% select(rise_id, OBJ_usage_rounded)
+df_digital_awareness_score <- digital_awareness.composite %>% select(rise_id, digital_awareness_score)
+df_digital_awareness_absolute <- digital_awareness.composite %>% select(rise_id, digital_awareness_absolute)
+df_MTES_TimeSpent <- subjective_daily_use %>% select(rise_id, MTES_TimeSpent_Daily_Hours)
+
+# Merge each data frame by `rise_id`
+awareness_use.df <- df_OBJ_usage %>%
+  merge(df_digital_awareness_score, by = "rise_id", all = TRUE) %>%
+  merge(df_digital_awareness_absolute, by = "rise_id", all = TRUE) %>%
+  merge(df_MTES_TimeSpent, by = "rise_id", all = TRUE)
+
+##remove outliers from OBJ_USE_ROUNDED
+
+# Calculate mean and standard deviation for OBJ_usage_rounded
+mean_OBJ_usage <- mean(awareness_use.df$OBJ_usage_rounded, na.rm = TRUE)
+sd_OBJ_usage <- sd(awareness_use.df$OBJ_usage_rounded, na.rm = TRUE)
+
+# Define upper and lower thresholds for outliers
+threshold_OBJ_usage <- c(mean_OBJ_usage - 2.5 * sd_OBJ_usage, mean_OBJ_usage + 2.5 * sd_OBJ_usage)
+
+# Identify outliers in OBJ_usage_rounded
+outliers_OBJ_usage <- which(awareness_use.df$OBJ_usage_rounded < threshold_OBJ_usage[1] | 
+                            awareness_use.df$OBJ_usage_rounded > threshold_OBJ_usage[2])
+
+# Replace outliers with NA in OBJ_usage_rounded
+awareness_use.df$OBJ_usage_rounded[outliers_OBJ_usage] <- NA
+
+# Count replaced cells for OBJ_usage_rounded
+replaced_OBJ_usage <- length(outliers_OBJ_usage)
+
+# Output the count of replaced cells for OBJ_usage_rounded
+cat("Replaced outliers for OBJ_usage_rounded:", replaced_OBJ_usage, "\n")
+
+# Print indices (rise_id values) of removed rows
+cat("rise_id values for removed rows due to outliers:\n", awareness_use.df$rise_id[outliers_OBJ_usage], "\n")
+
+###REMOVED 50129
+
+
+## remove outliers from MTES_TimeSpent_Daily_Hours
+
+# Calculate mean and standard deviation for MTES_TimeSpent_Daily_Hours
+mean_MTES_TimeSpent <- mean(awareness_use.df$MTES_TimeSpent_Daily_Hours, na.rm = TRUE)
+sd_MTES_TimeSpent <- sd(awareness_use.df$MTES_TimeSpent_Daily_Hours, na.rm = TRUE)
+
+# Define upper and lower thresholds for outliers
+threshold_MTES_TimeSpent <- c(mean_MTES_TimeSpent - 2.5 * sd_MTES_TimeSpent, mean_MTES_TimeSpent + 2.5 * sd_MTES_TimeSpent)
+
+# Identify outliers in MTES_TimeSpent_Daily_Hours
+outliers_MTES_TimeSpent <- which(awareness_use.df$MTES_TimeSpent_Daily_Hours < threshold_MTES_TimeSpent[1] | 
+                                 awareness_use.df$MTES_TimeSpent_Daily_Hours > threshold_MTES_TimeSpent[2])
+
+# Replace outliers with NA in MTES_TimeSpent_Daily_Hours
+awareness_use.df$MTES_TimeSpent_Daily_Hours[outliers_MTES_TimeSpent] <- NA
+
+# Count replaced cells for MTES_TimeSpent_Daily_Hours
+replaced_MTES_TimeSpent <- length(outliers_MTES_TimeSpent)
+
+# Output the count of replaced cells for MTES_TimeSpent_Daily_Hours
+cat("Replaced outliers for MTES_TimeSpent_Daily_Hours:", replaced_MTES_TimeSpent, "\n")
+
+# Print indices (rise_id values) of removed rows
+cat("rise_id values for removed rows due to outliers:\n", awareness_use.df$rise_id[outliers_MTES_TimeSpent], "\n")
+
+###Removed:  50030 50139 50151 50188 
+
+##calculate descriptives from MTES_TimeSpent_Daily_Hours
+
+descriptive_stats_MTES_TimeSpent_Daily_Hours <- describe(awareness_use.df$MTES_TimeSpent_Daily_Hours)
+
+
+#Z score all data
+# Calculate Z-scores for OBJ_usage_rounded
+awareness_use.df$OBJ_usage_rounded.Z <- scale(awareness_use.df$OBJ_usage_rounded, center = TRUE, scale = TRUE)
+
+# Calculate Z-scores for MTES_TimeSpent_Daily_Hours
+awareness_use.df$MTES_TimeSpent_Daily_Hours.Z <- scale(awareness_use.df$MTES_TimeSpent_Daily_Hours, center = TRUE, scale = TRUE)
+
+
+
+```
+
+```{r}
+library(kableExtra)
+
+# Create a function to add stars for significance levels
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Select specific variables from awareness_use.df
+selected_vars <- subset(awareness_use.df, select = c(MTES_TimeSpent_Daily_Hours.Z, OBJ_usage_rounded.Z, digital_awareness_score, digital_awareness_absolute))
+
+# Calculate correlation matrix
+correlation_matrix <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  return(list(corr = corr_value, p = p_value))
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(res$p)
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Number row names (e.g., "1. MTES_TimeSpent_Daily_Hours_Z")
+rownames(result) <- paste0(1:ncol(selected_vars), ". ", names(selected_vars))
+
+# Replace column names with numbers
+colnames(result) <- 1:ncol(selected_vars)
+
+# Convert the result to a data frame for easier handling
+correlation_df <- as.data.frame(result)
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+```
+
+
+##scatterplot of obj and subjective
+```{r}
+
+# Create a scatterplot with custom axis labels
+plot(awareness_use.df$MTES_TimeSpent_Daily_Hours.Z, awareness_use.df$OBJ_usage_rounded.Z,
+     main = "Scatterplot of Subjective Daily Use vs. Objective Daily Use",
+     xlab = "Subjective Daily Use",
+     ylab = "Objective Daily Use",
+     pch = 19, col = "blue")
+
+# Optionally, add a grid for better readability
+grid()
+
+
+```
+
+
+###removing outliers from MTES subscales in order to add them to the correlation matrix. 
+
+```{r}
+
+##### TIMEONAPP
+# Identify outliers for z-scores with ±2.5 threshold
+outliers_toa <-mtes_z.scores$MTES_SocialMediaUse_TimeOnApp.sum.z < -2.5 | mtes_z.scores$MTES_SocialMediaUse_TimeOnApp.sum.z > 2.5
+
+# Print out outliers
+print(outliers_toa)
+
+# Get rise_id associated with outliers
+outlier_rise_ids <- mtes_z.scores[outliers_toa, "rise_id"]
+
+# Count the number of removed cells
+removed_cells <- sum(outliers_toa, na.rm = TRUE)
+
+# Output the count of removed cells
+cat("Removed cells for MTES_SocialMediaUse_TimeOnApp.sum.z:", removed_cells, "\n")
+
+# Print out the rise_id of the removed outliers
+cat("Rise IDs associated with outliers:", paste(outlier_rise_ids, collapse = ", "), "\n")
+
+# Replace outliers with NA in the specific column (MTES_SocialMediaUse_TimeOnApp.sum.z)
+mtes_z.scores$MTES_SocialMediaUse_TimeOnApp.sum.z[outliers_toa] <- NA
+
+
+###### 2 Outliers Removed: 50113, 50172
+
+```
+
+```{r}
+###### CHECKING 
+
+# Identify outliers for z-scores with ±2.5 threshold
+outliers_ch <-mtes_z.scores$MTES_PhoneChecking.mean.z < -2.5 | mtes_z.scores$MTES_PhoneChecking.mean.z > 2.5
+
+# Print out outliers
+print(outliers_ch)
+
+# Get rise_id associated with outliers
+outlier_rise_ids <- mtes_z.scores[outliers_ch, "rise_id"]
+
+# Count the number of removed cells
+removed_cells <- sum(outliers_ch, na.rm = TRUE)
+
+# Output the count of removed cells
+cat("Removed cells for MTES_PhoneChecking.mean.z:", removed_cells, "\n")
+
+# Print out the rise_id of the removed outliers
+cat("Rise IDs associated with outliers:", paste(outlier_rise_ids, collapse = ", "), "\n")
+
+
+# Replace outliers with NA in the specific column (MTES_SocialMediaUse_TimeOnApp.sum.z)
+mtes_z.scores$MTES_PhoneChecking.mean.z[outliers_ch] <- NA
+
+## 5 Removed: 50106, 50216, 50250, 50251, 50264
+
+```
+
+
+```{r}
+###### Posting 
+
+# Identify outliers for z-scores with ±2.5 threshold
+outliers_p <-mtes_z.scores$MTES_PublicUpdates.mean.z < -2.5 | mtes_z.scores$MTES_PublicUpdates.mean.z > 2.5
+
+# Print out outliers
+print(outliers_p)
+
+# Get rise_id associated with outliers
+outlier_rise_ids <- mtes_z.scores[outliers_p, "rise_id"]
+
+# Count the number of removed cells
+removed_cells <- sum(outliers_p, na.rm = TRUE)
+
+# Output the count of removed cells
+cat("Removed cells for MTES_PublicUpdates.mean.z:", removed_cells, "\n")
+
+# Print out the rise_id of the removed outliers
+cat("Rise IDs associated with outliers:", paste(outlier_rise_ids, collapse = ", "), "\n")
+
+# Replace outliers with NA in the specific column (MTES_SocialMediaUse_TimeOnApp.sum.z)
+mtes_z.scores$MTES_PublicUpdates.mean.z[outliers_p] <- NA
+
+
+### 2 Removed: 50076, 50112
+```
+
+
+##Descriptives for the subscales##
+```{r}
+
+
+# Compute descriptive statistics
+descriptive_stats_toa <- describe(mtes_z.scores$MTES_SocialMediaUse_TimeOnApp.sum.z)
+
+# Compute descriptive statistics
+descriptive_stats_ch <- describe(mtes_z.scores$MTES_PhoneChecking.mean.z)
+
+
+# Compute descriptive statistics
+descriptive_stats_p <- describe(mtes_z.scores$MTES_PublicUpdates.mean.z)
+
+# Compute descriptive statistics
+descriptive_stats_doe <- describe(digital_awareness.composite$digital_awareness_score)
+
+# Compute descriptive statistics
+descriptive_stats_DA <- describe(digital_awareness.composite$digital_awareness_absolute)
+
+```
+
+#### MTES Correlation Matrix #######
+
+
+#### First make the order a little better#####
+
+```{r}
+
+
+
+# First, ensure that the relevant columns exist in both data frames
+# Select columns from mtes_z.scores
+mtes_selected_columns <- mtes_z.scores[, c(
+  "rise_id", 
+  "MTES_SocialMediaUse_TimeOnApp.sum.z", 
+  "MTES_PhoneChecking.mean.z", 
+  "MTES_PublicUpdates.mean.z"
+)]
+
+# Merge the selected columns into added_mtes_total using rise_id as the key
+added_mtes_total <- merge(added_mtes_total, mtes_selected_columns, by = "rise_id", all.x = TRUE)
+
+##create the subjective (MTES/SAS variable and add it to MTES - TOTAL)
+added_mtes_total$SSM_subjective <- rowMeans(added_mtes_total[, c("MTES_Total_Original.z", "sas_agg.clean.Z")], na.rm = TRUE)
+##maunally checked and found no outliers. 
+
+# Select columns that exist in added_mtes_total
+columns_to_select <- c(
+  "rise_id", 
+  "MTES_Total_Original.z", 
+  "sas_agg.clean.Z", 
+  "OBJ_Usage.DailyHourlyAverage.Z", 
+  "SSM_composite.x",
+  "SSM_subjective",
+  "MTES_SocialMediaUse_TimeOnApp.sum.z", 
+  "MTES_PhoneChecking.mean.z", 
+  "MTES_PublicUpdates.mean.z", 
+  "digital_awareness_score", 
+  "digital_awareness_absolute"
+)
+
+# Subset columns that exist in the data frame
+added_mtes_total <- added_mtes_total[, columns_to_select[columns_to_select %in% colnames(added_mtes_total)]]
+
+# View the updated data frame
+head(added_mtes_total)
+
+```
+
+
+```{r}
+selected_vars <- subset(added_mtes_total, select = -c(rise_id, digital_awareness_score, digital_awareness_absolute))
+correlation_matrix <- cor(selected_vars)
+
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  formatted_p <- sprintf("%.4f", p_value)
+   return(list(corr = corr_value, p = formatted_p))
+}
+
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("NA")
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    return(paste0("(p =", res$p, ", r =", round(res$corr, 3), ")"))
+  }
+}))
+
+rownames(result) <- colnames(result) <- names(selected_vars)
+
+print(result)
+
+addedcorrelationmatrix <- data.frame(result)
+```
+
+```{r}
+
+library(kableExtra)
+
+# Subset the variables
+selected_vars <- subset(added_mtes_total, select = -c(rise_id, digital_awareness_score, digital_awareness_absolute))
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define a function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  return(list(corr = corr_value, p = p_value))
+}
+
+# Define a function to add significance stars based on p-value
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(res$p)
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Rename rows as specified
+row_labels <- c("1. MTES", "2. SAS", "3. Objective Daily", "4. SSM compostie", "5.Subjective (MTES-SAS)",
+                "6. TimeonApp", "7. Checking", "8. Posting")
+rownames(result) <- row_labels
+
+# Replace column names with numbers
+colnames(result) <- 1:length(row_labels)
+
+# Convert the result to a data frame for easier handling
+correlation_df <- as.data.frame(result)
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+
+```
+
+
+##scatterplot of MTES and SAS
+
+```{r}
+
+# Create a scatterplot with custom axis labels for MTES_Total_Original.z and sas_agg.clean.Z
+plot(added_mtes_total$MTES_Total_Original.z, added_mtes_total$sas_agg.clean.Z,
+     main = "Scatterplot of MTES vs. SAS",
+     xlab = "MTES",
+     ylab = "SAS",
+     pch = 19, col = "blue")
+
+# Optionally, add a grid for better readability
+grid()
+
+
+
+
+```
+
+### scatterplot for MTES and OBJ
+
+```{r}
+
+# Create a scatterplot with custom axis labels
+plot(added_mtes_total$MTES_Total_Original.z, added_mtes_total$OBJ_Usage.DailyHourlyAverage.Z,
+     main = "Scatterplot of MTES vs. Objective Daily Use",
+     xlab = "MTES",
+     ylab = "Objective Daily Use",
+     pch = 19, col = "blue")
+
+# Optionally, add a grid for better readability
+grid()
+
+
+
+```
+
+```{r}
+
+
+
+# Create a scatterplot with custom axis labels for SAS and Objective Daily Use
+plot(added_mtes_total$sas_agg.clean.Z, added_mtes_total$OBJ_Usage.DailyHourlyAverage.Z,
+     main = "Scatterplot of SAS vs. Objective Daily Use",
+     xlab = "SAS",
+     ylab = "Objective Daily Use",
+     pch = 19, col = "blue")
+
+# Optionally, add a grid for readability
+grid()
+
+
+
+```
+
+
+##scatterplot of the relationship between MTES and Dig. awareness (overestimation)
+```{r}
+
+
+# Assuming added_mtes_total is your data frame
+
+# Create the scatterplot
+ggplot(added_mtes_total, aes(x = MTES_Total_Original.z, y = digital_awareness_score)) +
+  geom_point() +
+  labs(
+    title = "Scatterplot of MTES Total Original vs Digital Awareness Score",
+    x = "MTES Total Original (z)",
+    y = "Digital Awareness Score"
+  ) +
+  theme_minimal()
+
+
+
+```
+
+```{r}
+
+# Corrected syntax for creating subjective_merge and merging with added_mtes_total
+subjective_merge <- subset(awareness_use.df, select = c(rise_id, MTES_TimeSpent_Daily_Hours.Z))
+
+# Merge added_mtes_total with subjective_merge by rise_id
+added_mtes_total <- merge(added_mtes_total, subjective_merge, by = "rise_id", all = TRUE)
+
+##rename for clarity
+
+```
+
+```{r}
+
+# Rename columns in added_mtes_total
+colnames(added_mtes_total) <- sub("MTES_Total_Original.z", "MTES_TOT", colnames(added_mtes_total))
+colnames(added_mtes_total) <- sub("sas_agg.clean.Z", "SAS", colnames(added_mtes_total))
+colnames(added_mtes_total) <- sub("OBJ_Usage.DailyHourlyAverage.Z", "OBJ_DAILY", colnames(added_mtes_total))
+colnames(added_mtes_total) <- sub("SSM_composite.x", "SSM_composite", colnames(added_mtes_total))
+colnames(added_mtes_total) <- sub("SSM_subjective", "SSM_subjective", colnames(added_mtes_total)) # This remains unchanged
+colnames(added_mtes_total) <- sub("MTES_SocialMediaUse_TimeOnApp.sum.z", "Timeonapp", colnames(added_mtes_total))
+colnames(added_mtes_total) <- sub("MTES_PhoneChecking.mean.z", "Checking", colnames(added_mtes_total))
+colnames(added_mtes_total) <- sub("MTES_PublicUpdates.mean.z", "Posting", colnames(added_mtes_total))
+colnames(added_mtes_total) <- sub("digital_awareness_score", "Digital_overestimation", colnames(added_mtes_total))
+colnames(added_mtes_total) <- sub("digital_awareness_absolute", "Digital_awareness", colnames(added_mtes_total))
+colnames(added_mtes_total) <- sub("MTES_TimeSpent_Daily_Hours.Z", "Subjective_daily", colnames(added_mtes_total))
+
+# Display the first few rows of the dataframe to verify the column names
+head(added_mtes_total)
+
+
+                           
+
+# Export added_mtes_total to a CSV file
+write.csv(added_mtes_total, "ssm_data.csv", row.names = FALSE)
+
+
+```
+
+
+```{r}
+
+
+# Calculate descriptive statistics for 'digital_awareness_absolute'
+descriptive_stats_subjectivessm <- describe(added_mtes_total$SSM_subjective)
+
+```
+
+# Calculate descriptive statistics for 'digital_awareness_absolute'
+descriptive_stats_digital_awareness_absolute <- describe(digital_awareness.composite$digital_awareness_absolute)
+
+#calculate descriptive stats for 'digital_overestimation'
+descriptive_stats_digital_overestimation <- describe(digital_awareness.composite$digital_overestimation)
+
+
+```

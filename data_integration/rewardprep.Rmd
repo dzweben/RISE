@@ -1,0 +1,87 @@
+---
+title: "Rise_prep_bdi"
+author: "Daniel Zweben"
+date: "2024-10-31"
+output: html_document
+---
+
+```{r}
+
+#df is a fancy convention for data frame. Data frame is the same thing as spreadsheet
+df <- read.csv("/Users/dannyzweben/Desktop/CABLAB_Files/RISE/data_integration/BDI.sampleinfo.csv")
+```
+
+## cleaning demo(+bdi) data
+
+```{r}
+
+library(dplyr)
+df$demo_latino <- recode(df$demo_latino,
+                         `-999` = NA_character_,
+                         `0` = "Not Hispanic or Latino/a",
+                         `1` = "Hispanic or Latino/a")
+# Rename `demo_latino` to `Ethnicity`
+names(df)[names(df) == "demo_latino"] <- "Ethnicity"
+
+# Transform `demo_race` column
+df$demo_race <- recode(df$demo_race,
+                       `-999` = NA_character_,
+                       `0` = "Caucasian/White",
+                       `1` = "African American or Black",
+                       `2` = "Asian-American or Asian",
+                       `3` = "Native American / Alaska Native",
+                       `4` = "Native Hawaiian or Other Pacific Islander",
+                       `5` = "Biracial/Multiracial")
+# Rename `demo_race` to `Race`
+names(df)[names(df) == "demo_race"] <- "Race"
+
+# Transform `demo_gender` column
+df$demo_gender <- recode(df$demo_gender,
+                         `-999` = NA_character_,
+                         `0` = "Male",
+                         `1` = "Female",
+                         `2` = "Trans",
+                         `3` = "Queer/Questioning",
+                         `4` = "Other")
+# Rename `demo_gender` to `Gender`
+names(df)[names(df) == "demo_gender"] <- "Gender"
+
+
+# Rename `demo_sex` to `Sex`
+names(df)[names(df) == "demo_sex"] <- "Sex"
+
+# Rename `demo_age` to `Age`
+names(df)[names(df) == "demo_age"] <- "Age"
+
+```
+
+
+## adding other reward variables
+
+```{r}
+df_rew <- read.csv("/Users/dannyzweben/Desktop/CABLAB_Files/RISE/data_integration/reward_sampleinfo.csv")
+```
+
+
+```{r}
+df_ssm <- read.csv("/Users/dannyzweben/Desktop/CABLAB_Files/RISE/SSM/ssm_data.csv")
+```
+
+
+
+```{r}
+# Merge the data frames by the 'rise_id' column
+merged_df <- merge(df_rew, df, by = "rise_id")
+merged_df <- merge(merged_df, df_ssm, by = "rise_id")
+
+```
+# Remove the 'DD_IndiffAvg' column
+merged_df$DD_IndiffAvg <- NULL
+
+```{r}
+# Export the data frame to the specified folder
+write.csv(merged_df, "/Users/dannyzweben/Desktop/CABLAB_Files/RISE/data_integration/RISE_ssm.reward.totaldata.csv", row.names = FALSE)
+
+
+```
+

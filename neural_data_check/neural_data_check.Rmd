@@ -1,0 +1,577 @@
+---
+title: "neuralcheck-rise"
+author: "Daniel Zweben"
+date: "2025-01-13"
+output: html_document
+---
+Read in the df
+```{r}
+df <- read.csv("/Users/dannyzweben/Desktop/CABLAB_Files/RISE/neural_data_check/Rise_data_ready.csv")
+
+```
+
+
+GA Correlations: 
+```{r}
+
+library(kableExtra)
+
+# Create a function to add stars for significance levels
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Select specific variables from df
+selected_vars <- subset(df, select = c(
+  mid_ga_ho_accumbens_50prob,
+  mid_ga_nacc_8mmsphere_ng,
+  mid_ga_ofc_8mmsphere_knutson_antic,
+  mid_ga_ofc_8mmsphere_ng,
+  mid_ga_ofc_8mmsphere_oldham,
+  BAS_TOT,
+  CARROT,
+  DD_IndiffAvg,
+  PVSS_TOT,
+  SPSRQ_RWD
+))
+
+
+# Calculate correlation matrix
+correlation_matrix_ga <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  formatted_p <- sprintf("%.4f", p_value)
+  return(list(corr = corr_value, p = formatted_p))
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(as.numeric(res$p))  # Convert p-value to numeric for star function
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Create a second table with p-values and r-values in the desired format
+result_with_ps_and_rs <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("NA")
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    return(paste0("(p =", res$p, ", r =", round(res$corr, 3), ")"))
+  }
+}))
+
+# Rename rows and columns
+row_labels <- c(
+  "1. Mid Ho Accumbens 50 Prob",
+  "2. Mid NAcc 8mm Sphere NG",
+  "3. Mid OFC 8mm Sphere Knutson Antic",
+  "4. Mid OFC 8mm Sphere NG",
+  "5. Mid OFC 8mm Sphere Oldham",
+  "6. BAS Total",
+  "7. CARROT",
+  "8. DD Indifference Average",
+  "9. PVSS Total",
+  "10. SPSRQ Reward"
+)
+rownames(result) <- row_labels
+rownames(result_with_ps_and_rs) <- row_labels
+colnames(result) <- 1:ncol(selected_vars)
+colnames(result_with_ps_and_rs) <- 1:ncol(selected_vars)
+
+# Convert the result to data frames for easier handling
+correlation_df_ga <- as.data.frame(result)
+correlation_df_pr_ga <- as.data.frame(result_with_ps_and_rs)
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df_ga, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+
+
+
+
+```
+
+GO Correlations
+
+```{r}
+
+
+library(kableExtra)
+
+# Create a function to add stars for significance levels
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Select specific variables from df
+selected_vars <- subset(df, select = c(
+  mid_go_ho_accumbens_50prob,
+  mid_go_nacc_8mmsphere_ng,
+  mid_go_ofc_8mmsphere_knutson_antic,
+  mid_go_ofc_8mmsphere_ng,
+  mid_go_ofc_8mmsphere_oldham,
+  BAS_TOT,
+  CARROT,
+  DD_IndiffAvg,
+  PVSS_TOT,
+  SPSRQ_RWD
+))
+
+
+# Calculate correlation matrix
+correlation_matrix_go <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  formatted_p <- sprintf("%.4f", p_value)
+  return(list(corr = corr_value, p = formatted_p))
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(as.numeric(res$p))  # Convert p-value to numeric for star function
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Create a second table with p-values and r-values in the desired format
+result_with_ps_and_rs <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("NA")
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    return(paste0("(p =", res$p, ", r =", round(res$corr, 3), ")"))
+  }
+}))
+
+# Rename rows and columns
+row_labels <- c(
+  "1. Mid Ho Accumbens 50 Prob",
+  "2. Mid NAcc 8mm Sphere NG",
+  "3. Mid OFC 8mm Sphere Knutson Antic",
+  "4. Mid OFC 8mm Sphere NG",
+  "5. Mid OFC 8mm Sphere Oldham",
+  "6. BAS Total",
+  "7. CARROT",
+  "8. DD Indifference Average",
+  "9. PVSS Total",
+  "10. SPSRQ Reward"
+)
+rownames(result) <- row_labels
+rownames(result_with_ps_and_rs) <- row_labels
+colnames(result) <- 1:ncol(selected_vars)
+colnames(result_with_ps_and_rs) <- 1:ncol(selected_vars)
+
+# Convert the result to data frames for easier handling
+correlation_df_go <- as.data.frame(result)
+correlation_df_pr_go <- as.data.frame(result_with_ps_and_rs)
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df_go, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+
+
+
+
+```
+
+
+govslo
+
+```{r}
+
+
+library(kableExtra)
+
+# Create a function to add stars for significance levels
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Select specific variables from df
+selected_vars <- subset(df, select = c(
+  mid_govslo_ho_accumbens_50prob,
+  mid_govslo_nacc_8mmsphere_ng,
+  mid_govslo_ofc_8mmsphere_knutson_antic,
+  mid_govslo_ofc_8mmsphere_ng,
+  mid_govslo_ofc_8mmsphere_oldham,
+  BAS_TOT,
+  CARROT,
+  DD_IndiffAvg,
+  PVSS_TOT,
+  SPSRQ_RWD
+))
+
+
+# Calculate correlation matrix
+correlation_matrix_govlo <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  formatted_p <- sprintf("%.4f", p_value)
+  return(list(corr = corr_value, p = formatted_p))
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(as.numeric(res$p))  # Convert p-value to numeric for star function
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Create a second table with p-values and r-values in the desired format
+result_with_ps_and_rs <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("NA")
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    return(paste0("(p =", res$p, ", r =", round(res$corr, 3), ")"))
+  }
+}))
+
+# Rename rows and columns
+row_labels <- c(
+  "1. Mid Ho Accumbens 50 Prob",
+  "2. Mid NAcc 8mm Sphere NG",
+  "3. Mid OFC 8mm Sphere Knutson Antic",
+  "4. Mid OFC 8mm Sphere NG",
+  "5. Mid OFC 8mm Sphere Oldham",
+  "6. BAS Total",
+  "7. CARROT",
+  "8. DD Indifference Average",
+  "9. PVSS Total",
+  "10. SPSRQ Reward"
+)
+rownames(result) <- row_labels
+rownames(result_with_ps_and_rs) <- row_labels
+colnames(result) <- 1:ncol(selected_vars)
+colnames(result_with_ps_and_rs) <- 1:ncol(selected_vars)
+
+# Convert the result to data frames for easier handling
+correlation_df_govslo <- as.data.frame(result)
+correlation_df_pr_govslo <- as.data.frame(result_with_ps_and_rs)
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df_govslo, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+
+
+
+
+```
+
+
+
+gavsla
+
+```{r}
+library(kableExtra)
+
+# Create a function to add stars for significance levels
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Select specific variables from df
+selected_vars <- subset(df, select = c(
+  mid_gavsla_ho_accumbens_50prob,
+  mid_gavsla_nacc_8mmsphere_ng,
+  mid_gavsla_ofc_8mmsphere_knutson_antic,
+  mid_gavsla_ofc_8mmsphere_ng,
+  mid_gavsla_ofc_8mmsphere_oldham,
+  BAS_TOT,
+  CARROT,
+  DD_IndiffAvg,
+  PVSS_TOT,
+  SPSRQ_RWD
+))
+
+
+# Calculate correlation matrix
+correlation_matrix_gavla <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  formatted_p <- sprintf("%.4f", p_value)
+  return(list(corr = corr_value, p = formatted_p))
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(as.numeric(res$p))  # Convert p-value to numeric for star function
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Create a second table with p-values and r-values in the desired format
+result_with_ps_and_rs <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("NA")
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    return(paste0("(p =", res$p, ", r =", round(res$corr, 3), ")"))
+  }
+}))
+
+# Rename rows and columns
+row_labels <- c(
+  "1. Mid Ho Accumbens 50 Prob",
+  "2. Mid NAcc 8mm Sphere NG",
+  "3. Mid OFC 8mm Sphere Knutson Antic",
+  "4. Mid OFC 8mm Sphere NG",
+  "5. Mid OFC 8mm Sphere Oldham",
+  "6. BAS Total",
+  "7. CARROT",
+  "8. DD Indifference Average",
+  "9. PVSS Total",
+  "10. SPSRQ Reward"
+)
+rownames(result) <- row_labels
+rownames(result_with_ps_and_rs) <- row_labels
+colnames(result) <- 1:ncol(selected_vars)
+colnames(result_with_ps_and_rs) <- 1:ncol(selected_vars)
+
+# Convert the result to data frames for easier handling
+correlation_df_gavsla <- as.data.frame(result)
+correlation_df_pr_gavsla <- as.data.frame(result_with_ps_and_rs)
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df_gavsla, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+
+```
+
+
+
+
+
+mid_ga_vs_8mmsphere_oldham_rew:
+[MID Task] GainAnt: Ventral Striatum Oldham et al. (2018) Reward
+
+```{r}
+
+
+
+
+
+
+
+
+library(kableExtra)
+
+# Create a function to add stars for significance levels
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Select specific variables from awareness_use.df
+selected_vars <- subset(df, select = c(mid_ga_vs_8mmsphere_oldham_rew,  BAS_TOT,
+  CARROT,
+  DD_IndiffAvg,
+  PVSS_TOT,
+  SPSRQ_RWD))
+
+# Calculate correlation matrix
+correlation_matrix <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  formatted_p <- sprintf("%.4f", p_value)
+  return(list(corr = corr_value, p = formatted_p))
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(as.numeric(res$p))  # Convert p-value to numeric for star function
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Create a second table with p-values and r-values in the desired format
+result_with_ps_and_rs <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("NA")
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    return(paste0("(p =", res$p, ", r =", round(res$corr, 3), ")"))
+  }
+}))
+
+# Rename rows and columns
+row_labels <- c("1. mid_ga_vs_8mmsphere_oldham_rew", "2. BAS_TOT", "3. CARROT", "4. DD_IndiffAvg", "5. PVSS_TOT", "6. SPSRQ_RWD")
+rownames(result) <- row_labels
+rownames(result_with_ps_and_rs) <- row_labels
+colnames(result) <- 1:ncol(selected_vars)
+colnames(result_with_ps_and_rs) <- 1:ncol(selected_vars)
+
+# Convert the result to data frames for easier handling
+correlation_df <- as.data.frame(result)
+correlation_df_with_ps_and_rs <- as.data.frame(result_with_ps_and_rs)
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+# Print the table with p-values and r-values
+print(correlation_df_with_ps_and_rs)
+
+
+
+
+
+
+```
+
+correlation syntax: 
+
+```{r}
+library(kableExtra)
+
+# Create a function to add stars for significance levels
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Select specific variables from awareness_use.df
+selected_vars <- subset(awareness_use.df, select = c(MTES_TimeSpent_Daily_Hours.Z, OBJ_Usage.DailyHourlyAverage.Z, digital_awareness_score, digital_awareness_absolute))
+
+# Calculate correlation matrix
+correlation_matrix <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  formatted_p <- sprintf("%.4f", p_value)
+  return(list(corr = corr_value, p = formatted_p))
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(as.numeric(res$p))  # Convert p-value to numeric for star function
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Create a second table with p-values and r-values in the desired format
+result_with_ps_and_rs <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("NA")
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    return(paste0("(p =", res$p, ", r =", round(res$corr, 3), ")"))
+  }
+}))
+
+# Rename rows and columns
+row_labels <- c("1. Subjective Daily", "2. Objective Daily", "3. Digital Overestimation", "4. Digital Awareness")
+rownames(result) <- row_labels
+rownames(result_with_ps_and_rs) <- row_labels
+colnames(result) <- 1:ncol(selected_vars)
+colnames(result_with_ps_and_rs) <- 1:ncol(selected_vars)
+
+# Convert the result to data frames for easier handling
+correlation_df <- as.data.frame(result)
+correlation_df_with_ps_and_rs <- as.data.frame(result_with_ps_and_rs)
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+# Print the table with p-values and r-values
+print(correlation_df_with_ps_and_rs)
+
+
+```
+
+
+
+

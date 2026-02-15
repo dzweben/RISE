@@ -1,0 +1,7 @@
+﻿* Encoding: UTF-8.
+SELECT IF (mtes_0 = 1 OR mtes_0 = 2).
+
+DESCRIPTIVES VARIABLES=demo_age /STATISTICS=MEAN.
+
+FREQUENCIES VARIABLES=demo_sex /PERCENT.
+

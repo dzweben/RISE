@@ -1,0 +1,3626 @@
+---
+title: "RISE_FINAL_ANALYSES"
+author: "Daniel Zweben"
+date: "2024-10-31"
+output: html_document
+---
+
+```{r}
+fulldataset <- read.csv("/Users/dannyzweben/Desktop/CABLAB_Files/RISE/final_analyses/RISE_ssm.reward.totaldata.csv")
+
+```
+
+## subset a data frame with only variables included in the original data plan. 
+## this will include: rise_id, CARROT,BAS_TOT, reward_comp_mean, BDI_TOT, Age, Sex, MTES_TOT, SAS,	OBJ_DAILY, SSM_composite,	SSM_subjective, Digital_overestimation,	Digital_awareness, mid_ga_ho_accumbens_50prob, mid_ga_ofc_8mmsphere_ng, 
+
+```{r}
+
+df1 <- fulldataset[, c("rise_id","DD_IndiffAvg", "CARROT", "BAS_TOT", "reward_comp_mean", "BDI_TOT", 
+                       "Age", "Sex", "MTES_TOT", "SAS", "OBJ_DAILY", "SSM_composite", 
+                       "SSM_subjective", "Digital_overestimation", "Digital_awareness", 
+                       "mid_govslo_ho_accumbens_50prob", "mid_govslo_ofc_8mmsphere_ng", "Subjective_daily", "MTES_TOT", "mid_ga_ho_accumbens_50prob", "mid_ga_ofc_8mmsphere_ng", "mid_go_ho_accumbens_50prob", "mid_go_ofc_8mmsphere_ng",
+                       "mid_ga_ho_accumbens_50prob", "mid_ga_ofc_8mmsphere_ng")]
+
+
+```
+
+###################### SSM COMPOSITE REGRESSIONS ###############################
+
+1. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean (IVs)
+
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model
+model <- lm(SSM_composite ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+```
+
+2. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, bdi  (IVs)
+
+```{r}
+
+# Define the regression model with the updated IVs and DV
+model <- lm(SSM_composite ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "BDI_TOT" = "Depression Symptoms"
+                       )) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport", "Depression Symptoms")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+
+```
+
+
+(testing for interaction term)
+```{r}
+
+df1$interaction_term <- df1$BDI_TOT * df1$reward_comp_mean
+
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Subjective_daily ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + BDI_TOT + interaction_term, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "BDI_TOT" = "Depression Symptoms"
+                       )) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "interaction_term")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+
+
+
+
+
+
+```
+
+
+
+
+3. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, bdi, mid_ga_ho_accumbens_50prob,  (IVs)
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(SSM_composite ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ho_accumbens_50prob + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_NACC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+```
+
+4. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, bdi, mid_ga_ofc_8mmsphere_ng,  (IVs)
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(SSM_composite ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ofc_8mmsphere_ng + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+```
+
+5. NEURAL MODEL? (run one at a time, removing one of the MID variables each time)
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(SSM_composite ~ Age + Sex + mid_ga_ho_accumbens_50prob, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "MID_GA_NACC", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+```
+
+
+###################### SSM SUBJECTIVE REGRESSIONS ###############################
+
+1. Run a Regression with Age, Sex (control),DD, CARROT, reward_comp_mean (IVs)
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model
+model <- lm(SSM_subjective ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "CARROT" = "Carrot",
+                       "DD_IndiffAvg" = "DD",
+                       "reward_comp_mean" = "Reward_SelfReport")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+```
+
+2. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs)
+```{r}
+
+# Define the regression model with the updated IVs and DV
+model <- lm(SSM_subjective ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                      "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport", "Depression Symptoms")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+
+```
+
+
+3. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs), mid_ga_ho_accumbens_50prob
+
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(SSM_subjective ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ho_accumbens_50prob + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_NACC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+```
+4. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs), mid_ga_ofc_8mmsphere_ng
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(SSM_subjective ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ofc_8mmsphere_ng + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+```
+
+5. NEURAL MODEL? (run one at a time, removing one of the MID variables each time)
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(SSM_subjective ~ Age + Sex+ mid_ga_ofc_8mmsphere_ng, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "MID_GA_NACC", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+```
+
+SCATTERPLOTTS!!
+```{r}
+# Load necessary library
+library(ggplot2)
+
+# Create scatterplot with regression line and enhanced aesthetics
+ggplot(df1, aes(x = SSM_subjective, y = reward_comp_mean)) +
+  geom_point(color = "#0073e6", size = 4, alpha = 0.7) +  # Adjust point color and size
+  geom_smooth(method = "lm", color = "#e63946", se = FALSE, size = 1.5) +  # Regression line
+  labs(x = "Social Media Use", y = "Self Reported Reward", title = "Social Media Use vs. Self Reported Reward") +
+  theme_minimal(base_size = 15) +  # Clean theme with larger text
+  theme(
+    panel.grid = element_blank(),  # Remove grid lines
+    axis.title = element_text(face = "bold", size = 16),  # Bold axis titles
+    axis.text = element_text(size = 14),  # Larger axis labels
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),  # Centered title with bold
+    plot.margin = margin(1, 1, 1, 1, "cm"),  # Add margin for spacing
+    axis.line = element_line(color = "black", size = 1),  # Make x and y axes black
+    panel.border = element_rect(color = "black", fill = NA, size = 1)  # Add a black border around the plot
+  )
+
+
+
+```
+
+```{r}
+
+# Load necessary library
+library(ggplot2)
+
+# Create scatterplot with regression line and enhanced aesthetics for Objective SSM
+ggplot(df1, aes(x = OBJ_DAILY, y = reward_comp_mean)) +
+  geom_point(color = "#0073e6", size = 4, alpha = 0.7) +  # Adjust point color and size
+  geom_smooth(method = "lm", color = "#e63946", se = FALSE, size = 1.5) +  # Regression line
+  labs(x = "Objective SSM", y = "Self Reported Reward", title = "Objective SSM vs. Self Reported Reward") +
+  theme_minimal(base_size = 15) +  # Clean theme with larger text
+  theme(
+    panel.grid = element_blank(),  # Remove grid lines
+    axis.title = element_text(face = "bold", size = 16),  # Bold axis titles
+    axis.text = element_text(size = 14),  # Larger axis labels
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),  # Centered title with bold
+    plot.margin = margin(1, 1, 1, 1, "cm"),  # Add margin for spacing
+    axis.line = element_line(color = "black", size = 1),  # Make x and y axes black
+    panel.border = element_rect(color = "black", fill = NA, size = 1)  # Add a black border around the plot
+  )
+
+
+
+```
+
+```{r}
+
+# Create scatterplot with regression line and enhanced aesthetics for BDI_TOT and SSM_subjective
+ggplot(df1, aes(x = SSM_subjective, y = BDI_TOT)) +
+  geom_point(color = "#0073e6", size = 4, alpha = 0.7) +  # Adjust point color and size
+  geom_smooth(method = "lm", color = "#e63946", se = FALSE, size = 1.5) +  # Regression line
+  labs(x = "Social Media Use", y = "BDI Total", title = "Social Media Use vs. BDI Total Score") +
+  theme_minimal(base_size = 15) +  # Clean theme with larger text
+  theme(
+    panel.grid = element_blank(),  # Remove grid lines
+    axis.title = element_text(face = "bold", size = 16),  # Bold axis titles
+    axis.text = element_text(size = 14),  # Larger axis labels
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),  # Centered title with bold
+    plot.margin = margin(1, 1, 1, 1, "cm"),  # Add margin for spacing
+    axis.line = element_line(color = "black", size = 1),  # Make x and y axes black
+    panel.border = element_rect(color = "black", fill = NA, size = 1)  # Add a black border around the plot
+  )
+
+```
+
+```{r}
+# Load necessary library
+library(ggplot2)
+
+# Create scatterplot with regression line and enhanced aesthetics
+ggplot(df1, aes(x = OBJ_DAILY, y = BDI_TOT)) +
+  geom_point(color = "#0073e6", size = 4, alpha = 0.7) +  # Adjust point color and size
+  geom_smooth(method = "lm", color = "#e63946", se = FALSE, size = 1.5) +  # Regression line
+  labs(x = "Objective Daily Use", y = "BDI Total Score", title = "Objective Daily Use vs. BDI Total Score") +
+  theme_minimal(base_size = 15) +  # Clean theme with larger text
+  theme(
+    panel.grid = element_blank(),  # Remove grid lines
+    axis.title = element_text(face = "bold", size = 16),  # Bold axis titles
+    axis.text = element_text(size = 14),  # Larger axis labels
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),  # Centered title with bold
+    plot.margin = margin(1, 1, 1, 1, "cm"),  # Add margin for spacing
+    axis.line = element_line(color = "black", size = 1),  # Make x and y axes black
+    panel.border = element_rect(color = "black", fill = NA, size = 1)  # Add a black border around the plot
+  )
+
+
+
+```
+###################### SSM OBJECTIVE REGRESSIONS ###############################
+
+1. Run a Regression with Age, Sex (control),DD, CARROT, reward_comp_mean (IVs)
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model
+model <- lm(OBJ_DAILY ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "CARROT" = "Carrot",
+                       "DD_IndiffAvg" = "DD",
+                       "reward_comp_mean" = "Reward_SelfReport")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+```
+
+2. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs)
+```{r}
+
+# Define the regression model with the updated IVs and DV
+model <- lm(OBJ_DAILY ~ DD_IndiffAvg + reward_comp_mean + Age + Sex + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                      "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport", "Depression Symptoms")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+
+```
+
+
+3. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs), mid_ga_ho_accumbens_50prob
+
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(OBJ_DAILY ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ho_accumbens_50prob + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_NACC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+```
+
+4. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs), mid_ga_ofc_8mmsphere_ng
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(OBJ_DAILY ~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ofc_8mmsphere_ng + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+```
+
+5. NEURAL MODEL?
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(OBJ_DAILY ~ Age + Sex  + mid_ga_ofc_8mmsphere_ng , data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "MID_GA_NACC", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    Delta_R2 = "ΔR²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+```
+
+###################### SSM AWARENESS REGRESSIONS ###############################
+
+1. Run a Regression with Age, Sex (control),DD, CARROT, reward_comp_mean (IVs)
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model
+model <- lm(Digital_awareness~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "CARROT" = "Carrot",
+                       "DD_IndiffAvg" = "DD",
+                       "reward_comp_mean" = "Reward_SelfReport")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+```
+
+2. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs)
+```{r}
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Digital_awareness~ DD_IndiffAvg + reward_comp_mean + Age + Sex + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                      "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport", "Depression Symptoms")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+
+```
+
+
+3. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs), mid_ga_ho_accumbens_50prob
+
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Digital_awareness~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ho_accumbens_50prob + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_NACC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+```
+
+4. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs), mid_ga_ofc_8mmsphere_ng
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Digital_awareness~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ofc_8mmsphere_ng + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+```
+
+5. NEURAL MODEL?
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Digital_awareness~ Age + Sex + mid_ga_ofc_8mmsphere_ng, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "MID_GA_NACC", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    Delta_R2 = "ΔR²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+```
+
+###################################### SSM OVER-ESTIMATION ##########################
+
+
+1. Run a Regression with Age, Sex (control),DD, CARROT, reward_comp_mean (IVs)
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model
+model <- lm(Digital_overestimation~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "CARROT" = "Carrot",
+                       "DD_IndiffAvg" = "DD",
+                       "reward_comp_mean" = "Reward_SelfReport")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+```
+
+2. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs)
+```{r}
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Digital_overestimation~ DD_IndiffAvg + reward_comp_mean + Age + Sex + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                      "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport", "Depression Symptoms")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+
+```
+
+
+3. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs), mid_ga_ho_accumbens_50prob
+
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Digital_overestimation~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ho_accumbens_50prob + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_NACC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+```
+
+4. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs), mid_ga_ofc_8mmsphere_ng
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Digital_overestimation~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ofc_8mmsphere_ng + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+```
+
+5. NEURAL MODEL?
+mid_ga_ho_accumbens_50prob
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Digital_overestimation~ Age + Sex + mid_ga_ofc_8mmsphere_ng , data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  Delta_R2 = delta_r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "MID_GA_NACC", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, Delta_R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    Delta_R2 = "ΔR²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+```
+
+############################ DAILY USE SUBJECTIVE #####################################
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model
+model <- lm(Subjective_daily~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "CARROT" = "Carrot",
+                       "DD_IndiffAvg" = "DD",
+                       "reward_comp_mean" = "Reward_SelfReport")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+```
+
+2. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs)
+```{r}
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Subjective_daily~ DD_IndiffAvg + reward_comp_mean + Age + Sex + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                      "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "DD", "Carrot", "Reward_SelfReport", "Depression Symptoms")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+
+```
+
+
+3. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs), mid_ga_ho_accumbens_50prob
+
+
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Subjective_daily~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ho_accumbens_50prob + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_NACC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+```
+
+4. Run a Regression with Age, Sex (control), CARROT, reward_comp_mean, BDI  (IVs), mid_ga_ofc_8mmsphere_ng
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Subjective_daily~ DD_IndiffAvg + CARROT + reward_comp_mean + Age + Sex + mid_ga_ofc_8mmsphere_ng + BDI_TOT, data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "DD_IndiffAvg" = "DD",
+                       "CARROT" = "Carrot",
+                       "reward_comp_mean" = "Reward_SelfReport",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC",
+                       "BDI_TOT" = "Depression Symptoms")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex","DD", "Carrot", "Reward_SelfReport", "Depression Symptoms", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+```
+
+5. NEURAL MODEL? mid_ga_ho_accumbens_50prob
+```{r}
+
+# Install and load necessary packages
+if (!require(broom)) install.packages("broom")
+if (!require(flextable)) install.packages("flextable")
+if (!require(dplyr)) install.packages("dplyr")
+library(broom)
+library(flextable)
+library(dplyr)
+
+# Define the regression model with the updated IVs and DV
+model <- lm(Subjective_daily~ Age + Sex  + mid_ga_ofc_8mmsphere_ng , data = df1)
+
+# Calculate R-squared, Delta R-squared, and extract overall model p-value from summary(model)
+r_squared <- round(summary(model)$r.squared, 3)
+adj_r_squared <- round(summary(model)$adj.r.squared, 3)
+delta_r_squared <- round(r_squared - adj_r_squared, 3)
+
+# Extract the F-statistic and calculate the exact p-value, rounding to four decimal places
+f_stat <- summary(model)$fstatistic
+model_p_value <- round(pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE), 4)
+
+# Create a summary row for the model
+model_summary <- data.frame(
+  term = "Model Summary",
+  B = NA,
+  LL = NA,
+  UL = NA,
+  SE = NA,
+  beta = NA,
+  R2 = r_squared,
+  Delta_R2 = delta_r_squared,
+  p = model_p_value,
+  stringsAsFactors = FALSE
+)
+
+# Extract individual predictor statistics, including the intercept
+model_tidy <- tidy(model) %>%
+  mutate(
+    B = round(estimate, 2),
+    SE = round(std.error, 2),
+    t = round(statistic, 2),
+    p = round(p.value, 3),
+    LL = round(confint(model)[, 1], 2),  # Lower limit CI
+    UL = round(confint(model)[, 2], 2)   # Upper limit CI
+  ) %>%
+  select(term, B, LL, UL, SE, p)
+
+# Rename the intercept to "Constant"
+model_tidy <- model_tidy %>%
+  mutate(term = ifelse(term == "(Intercept)", "Constant", term))
+
+# Calculate standardized betas (β) only for predictors (not for the constant)
+beta_values <- sapply(model_tidy$term, function(var) {
+  if (var == "Constant") return(NA)
+  B <- model_tidy$B[model_tidy$term == var]
+  sd_pred <- sd(df1[[var]], na.rm = TRUE)
+  sd_dv <- sd(df1$SSM_composite, na.rm = TRUE)
+  round(B * (sd_pred / sd_dv), 2)
+})
+
+# Add beta values to the model_tidy table without R-squared values in individual rows
+model_tidy <- model_tidy %>%
+  mutate(
+    beta = beta_values,
+    R2 = NA,  # Only the model summary row will have R² values
+    Delta_R2 = NA
+  )
+
+# Reorder rows and rename terms as specified
+model_tidy <- model_tidy %>%
+  mutate(term = recode(term,
+                       "Age" = "Age",
+                       "Sex" = "Sex",
+                       "mid_ga_ho_accumbens_50prob" = "MID_GA_NACC",
+                       "mid_ga_ofc_8mmsphere_ng" = "MID_GA_OFC")) %>%
+  arrange(factor(term, levels = c("Constant", "Age", "Sex", "MID_GA_NACC", "MID_GA_OFC")))
+
+# Combine the model summary row with the predictor rows
+final_table <- bind_rows(model_summary, model_tidy)
+
+# Rearrange columns to have p-value as the last column
+final_table <- final_table %>%
+  select(term, B, LL, UL, SE, beta, R2, Delta_R2, p)
+
+# Create the flextable with all columns
+regression_table <- flextable(final_table) %>%
+  set_header_labels(
+    term = "Variable",
+    B = "B",
+    LL = "LL",
+    UL = "UL",
+    SE = "SE",
+    beta = "β",
+    R2 = "R²",
+    Delta_R2 = "ΔR²",
+    p = "p"
+  )
+
+# Display the table
+print(regression_table)
+
+
+```
+
+
+
+######################   CORRELATION######################
+```{r}
+# Load necessary packages
+library(kableExtra)
+
+# Subset the specified variables from df1, removing BAS_TOT and MTES_TOT
+selected_vars <- subset(df1, select = c(
+  CARROT, reward_comp_mean, BDI_TOT, Age, Sex, SAS,
+  OBJ_DAILY, SSM_composite, SSM_subjective, Digital_overestimation, 
+  Digital_awareness, mid_go_ho_accumbens_50prob, mid_go_ofc_8mmsphere_ng, 
+  Subjective_daily, MTES_TOT, DD_IndiffAvg
+))
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define a function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  return(list(corr = corr_value, p = p_value))
+}
+
+# Define a function to add significance stars based on p-value
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(res$p)
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Rename rows as specified
+row_labels <- c(
+  "1. CARROT", "2. Reward Comp Mean", "3. Depressive Symptoms", 
+  "4. Age", "5. Sex", "6. SAS", "7. Objective Daily", 
+  "8. SSM Composite", "9. SSM Subjective", "10. Digital Overestimation", 
+  "11. Digital Awareness", "12. MID GA NACC", "13. MID GA OFC", 
+  "14. Daily Subjective","15. MTES", "16. DD"
+)
+rownames(result) <- row_labels
+
+# Replace column names with numbers
+colnames(result) <- 1:length(row_labels)
+
+# Convert the result to a data frame for easier handling
+correlation_df <- as.data.frame(result)
+
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  kableExtra::footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+```
+
+
+```{r}
+
+# Load necessary library
+library(ggplot2)
+
+# Create scatterplot
+ggplot(df1, aes(x = CARROT, y = OBJ_DAILY)) +
+  geom_point() +
+  labs(title = "Scatterplot of CARROT vs OBJ_DAILY",
+       x = "CARROT",
+       y = "OBJ_DAILY") +
+  theme_minimal()
+
+
+```
+
+DATA CHECK - splitting up reward comp to measure assosciations with neural
+
+```{r}
+
+
+
+# Load necessary packages
+library(kableExtra)
+
+# Subset the specified variables from df1, removing BAS_TOT and MTES_TOT
+selected_vars <- subset(fulldataset, select = c(
+ mid_ga_ho_accumbens_50prob, mid_ga_ofc_8mmsphere_ng, SPSRQ_RWD, PVSS_TOT, BAS_TOT ))
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define a function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  return(list(corr = corr_value, p = p_value))
+}
+
+# Define a function to add significance stars based on p-value
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(res$p)
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Rename rows as specified
+row_labels <- c(
+  "1. MID_GA_NAAC", "2. MID_GA_OFC", "3. SPSRQ_RWD", 
+  "4. PVSS", "5. BAS"
+)
+rownames(result) <- row_labels
+
+# Replace column names with numbers
+colnames(result) <- 1:length(row_labels)
+
+# Convert the result to a data frame for easier handling
+correlation_df <- as.data.frame(result)
+
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  kableExtra::footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+```
+
+
+```{r}
+
+
+
+# Load necessary packages
+library(kableExtra)
+
+# Subset the specified variables from df1, removing BAS_TOT and MTES_TOT
+selected_vars <- subset(fulldataset, select = c(
+ SSM_composite,OBJ_DAILY, SPSRQ_RWD,  PVSS_TOT, BAS_TOT))
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define a function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  return(list(corr = corr_value, p = p_value))
+}
+
+# Define a function to add significance stars based on p-value
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(res$p)
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Rename rows as specified
+row_labels <- c(
+  "1. SSM COMPOSITE", "2. OBJ USE", "3. SPSRQ_RWD", 
+  "4. PVSS", "5. BAS"
+)
+rownames(result) <- row_labels
+
+# Replace column names with numbers
+colnames(result) <- 1:length(row_labels)
+
+# Convert the result to a data frame for easier handling
+correlation_df <- as.data.frame(result)
+
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  kableExtra::footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+```
+
+
+```{r}
+
+
+
+# Load necessary packages
+library(kableExtra)
+
+# Subset the specified variables from df1, removing BAS_TOT and MTES_TOT
+selected_vars <- subset(fulldataset, select = c(
+ SSM_composite, OBJ_DAILY, mid_ga_ho_accumbens_50prob, mid_ga_ofc_8mmsphere_ng, mid_go_ho_accumbens_50prob, mid_go_ofc_8mmsphere_ng, mid_govslo_ho_accumbens_50prob, mid_govslo_ofc_8mmsphere_ng))
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(selected_vars, use = "pairwise.complete.obs")
+
+# Define a function to calculate correlation and p-value
+correlation_pvalues <- function(x, y) {
+  corr_value <- cor.test(x, y)$estimate
+  p_value <- cor.test(x, y)$p.value
+  return(list(corr = corr_value, p = p_value))
+}
+
+# Define a function to add significance stars based on p-value
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else if (p_value < 0.1) return("†")
+  else return("")
+}
+
+# Create a matrix of correlations with stars
+result <- outer(names(selected_vars), names(selected_vars), FUN = Vectorize(function(x, y) {
+  if (x == y) {
+    return("-")  # Replace diagonal with '-'
+  } else if (which(names(selected_vars) == x) < which(names(selected_vars) == y)) {
+    return("")  # Leave space for values above the diagonal
+  } else {
+    res <- correlation_pvalues(selected_vars[[x]], selected_vars[[y]])
+    stars <- add_stars(res$p)
+    return(paste0(round(res$corr, 2), stars))
+  }
+}))
+
+# Rename rows as specified
+row_labels <- c(
+  "1. SSM_composite", "2. OBJ_DAILY", "3. mid_ga_ho_accumbens_50prob", "4. mid_ga_ofc_8mmsphere_ng", "5. mid_go_ho_accumbens_50prob", "6. mid_go_ofc_8mmsphere_ng", "7. mid_govslo_ho_accumbens_50prob", "8. mid_govslo_ofc_8mmsphere_ng"
+)
+rownames(result) <- row_labels
+# Replace column names with numbers
+colnames(result) <- 1:length(row_labels)
+
+# Convert the result to a data frame for easier handling
+correlation_df <- as.data.frame(result)
+
+
+# Create the table with "Zero-order correlations" title, and add a footnote
+kable(correlation_df, format = "html", booktabs = TRUE, row.names = TRUE, caption = "Zero-order correlations") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  kableExtra::footnote(general = "*** = p < .001, ** = p < .01, * = p < .05, † = marginally significant (0.05-0.1)",
+           general_title = "")
+
+```
+
