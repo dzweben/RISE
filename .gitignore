@@ -16,3 +16,7 @@
 *.docx
 *.rtf
 *.png
+
+# Non-CSV data dumps without extensions
+SSM/DTI_MTES_CLEANED
+SSM/mtes_dt_df
